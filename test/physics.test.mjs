@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { traceRay, CRITICAL_B, MAX_PHI, TABLE_WIDTH } from '../dist/geodesics.js';
-import { orbitalBasis, fallingBasis, initialPastRay, integratePastRay, advanceFall, FALL_END_RADIUS, FLIGHT_L, flightObserver, createFlightTrajectory, sampleFlight } from '../dist/freefall.js';
+import { orbitalBasis, fallingBasis, initialPastRay, integratePastRay, advanceFall, FALL_END_RADIUS, FLIGHT_L, flightObserver, createFlightTrajectory, sampleFlight, flightSignal, SIGNAL_FADE_RADIUS } from '../dist/freefall.js';
 
 test('Schwarzschild capture boundary matches analytic critical impact parameter', () => {
   for (const offset of [.1, .01, .002]) {
@@ -78,7 +78,7 @@ test('numerical plunge rays preserve Schwarzschild energy and converge', () => {
 });
 test('fall playback crosses the horizon and stops before the singularity', () => {
   let r = 40;
-  for (let frame = 0; frame < 1000; frame++) { const next = advanceFall(r, 1/30); assert.ok(next<=r); r=next; }
+  for (let frame = 0; frame < 1500; frame++) { const next = advanceFall(r, 1/30); assert.ok(next<=r); r=next; }
   assert.equal(r, FALL_END_RADIUS);
   assert.ok(r<1 && r>0);
 });
@@ -107,7 +107,7 @@ test('Lorentz-boosted observer rays preserve the null energy invariant', () => {
     }
   }
 });
-test('near-critical worldline winds almost twice, crosses the horizon and converges with timestep', () => {
+test('near-critical worldline winds almost twice before the horizon, continues inward and converges', () => {
   const coarse=createFlightTrajectory(1/30),fine=createFlightTrajectory(1/120);
   for (let i=1;i<coarse.length;i++) {
     assert.ok(coarse[i].radius<=coarse[i-1].radius);
@@ -116,7 +116,9 @@ test('near-critical worldline winds almost twice, crosses the horizon and conver
   }
   const end=coarse.at(-1),reference=fine.at(-1);
   assert.equal(end.radius,FALL_END_RADIUS);
-  assert.ok(end.angle/(2*Math.PI)>1.9 && end.angle/(2*Math.PI)<2);
+  const horizon=coarse.find(f=>f.radius<=1);
+  assert.ok(horizon.angle/(2*Math.PI)>1.9 && horizon.angle/(2*Math.PI)<2);
+  assert.ok(end.radius<.82 && end.angle>horizon.angle);
   assert.ok(Math.abs(end.angle-reference.angle)<.0003);
   assert.ok(Math.abs(end.properTime-reference.properTime)<.002);
   assert.ok(coarse.some(f=>f.radius>1) && coarse.some(f=>f.radius<1));
@@ -136,4 +138,39 @@ test('moving renderer resolves capture at the analytic separatrix without singul
     assert.ok(!ray.truncated);
     assert.ok(ray.maxEnergyError<.00003);
   }
+});
+
+
+test('deep interior camera frames stay finite and timelike until the numerical endpoint', () => {
+  const frames=createFlightTrajectory();
+  const inside=frames.filter(f=>f.radius<1);
+  assert.ok(inside.at(-1).elapsed-inside[0].elapsed>5);
+  for (const f of inside) {
+    assert.ok(Object.values(f).every(Number.isFinite));
+    const observer=flightObserver(f.radius,[0,0,1],[1,0,0]);
+    const beta2=observer.velocity.reduce((s,v)=>s+v*v,0);
+    assert.ok(Number.isFinite(observer.gamma) && beta2<1);
+    assert.ok(Math.abs(observer.gamma**2*(1-beta2)-1)<1e-7);
+  }
+});
+test('exterior light can still arrive deep inside the horizon before the cinematic ending', () => {
+  for (const r of [.12,.05,FALL_END_RADIUS]) {
+    assert.equal(integratePastRay([0,0,r],[0,0,1]).escaped,true);
+  }
+});
+test('camera signal remains intact at the horizon, fades smoothly, and finishes exactly black', () => {
+  for (const r of [40,1,.82,.4,SIGNAL_FADE_RADIUS]) assert.equal(flightSignal(r),1);
+  let previous=1;
+  for (let i=1;i<=500;i++) {
+    const r=SIGNAL_FADE_RADIUS*(FALL_END_RADIUS/SIGNAL_FADE_RADIUS)**(i/500);
+    const signal=flightSignal(r);
+    assert.ok(Number.isFinite(signal) && signal>=0 && signal<=previous);
+    assert.ok(previous-signal<.004);
+    previous=signal;
+  }
+  assert.equal(flightSignal(FALL_END_RADIUS),0);
+  assert.equal(flightSignal(0),0);
+  assert.ok(flightSignal(Math.sqrt(FALL_END_RADIUS*SIGNAL_FADE_RADIUS))>.49);
+  // Rewinding recovers the signal; no persistent completion flag affects replay.
+  assert.equal(flightSignal(1),1);
 });

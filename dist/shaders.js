@@ -135,11 +135,11 @@ vec3 fallingView(vec3 ray){
   for(int step=0;step<800;step++){
     if(step>=raySteps)break;
     float r=length(x);
-    if(r<.18)break;
+    if(r<.005)break;
     // An inward past ray below the horizon cannot turn back toward our sources.
     if(r<1.0&&dot(x,velocity)<0.0)break;
     if(r>80.0)return emission+transmission*sky(normalize(velocity))*min(4.0,pow(1.0/max(energy,.25),3.0));
-    float h=clamp(rayPrecision*r/max(length(velocity),.15),.002,1.5);
+    float h=clamp(rayPrecision*r/max(length(velocity),.15),.00000001,1.5);
     vec3 a=acceleration(x,l2);
     vec3 v2=velocity+a*h*.5, a2=acceleration(x+velocity*h*.5,l2);
     vec3 v3=velocity+a2*h*.5, a3=acceleration(x+v2*h*.5,l2);
@@ -201,9 +201,11 @@ uniform sampler2D image;
 uniform vec2 resolution;
 uniform float exposure;
 uniform float bloom;
+uniform float signalStrength;
 out vec4 color;
 vec3 sampleGlow(vec2 uv,vec2 d){vec3 c=texture(image,uv+d).rgb;return max(c-.85,0.0);}
 void main(){
+  if(signalStrength<=0.0){color=vec4(0,0,0,1);return;}
   vec2 uv=gl_FragCoord.xy/resolution;
   vec3 c=texture(image,uv).rgb;
   if(bloom>0.0){
@@ -219,5 +221,5 @@ void main(){
   c=(c*(2.51*c+.03))/(c*(2.43*c+.59)+.14);
   c=pow(clamp(c,0.0,1.0),vec3(1.0/2.2));
   float vignette=1.0-.19*pow(length((uv-.5)*1.2),2.0);
-  color=vec4(c*vignette,1);
+  color=vec4(c*vignette*signalStrength,1);
 }`;

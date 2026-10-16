@@ -1,5 +1,13 @@
 // Horizon radii and rs/c time units. Playback reparameterizes proper time.
-export const FALL_END_RADIUS = .82;
+export const FALL_END_RADIUS = .02;
+export const SIGNAL_FADE_RADIUS = .12;
+// Cinematic loss of camera signal near the center, independent of exposure.
+export function flightSignal(radius) {
+  if (radius <= FALL_END_RADIUS) return 0;
+  if (radius >= SIGNAL_FADE_RADIUS) return 1;
+  const t = Math.log(radius / FALL_END_RADIUS) / Math.log(SIGNAL_FADE_RADIUS / FALL_END_RADIUS);
+  return t*t*(3-2*t);
+}
 // Just below the marginally bound capture threshold L=2rs (specific energy=1).
 export const FLIGHT_L = 1.9985;
 export function wrapDegrees(angle) { return ((angle % 360) + 360) % 360; }
@@ -47,17 +55,21 @@ export function flightFrame(entry, angle, radius) {
 }
 export function advanceFlight(flight, dt, angularMomentum = FLIGHT_L) {
   let {radius: r, angle, properTime} = flight;
-  // Small RK4 proper-time steps preserve the near-critical winding trajectory.
-  const duration = (.20*r**1.5 + .65) * dt;
-  const count = Math.max(1, Math.ceil(duration/.025)), h = duration/count;
+  // Slow the interior in playback time, while preserving the same worldline.
+  const pace = r < 1 ? .85*r**2.5/(3-2*r) : .20*r**1.5+.65;
+  let remaining = pace * Math.max(0,dt);
   const rate = radius => [radialRate(radius, angularMomentum), angularMomentum/radius**2];
-  for (let i=0;i<count && r>FALL_END_RADIUS;i++) {
+  for (let i=0;i<4096 && remaining>0 && r>FALL_END_RADIUS;i++) {
+    // Resolve the rapidly increasing radial speed without stepping through r=0.
+    const h = Math.min(remaining,.025,.02*r/Math.max(-radialRate(r,angularMomentum),1e-12));
     const a=rate(r), b=rate(r+h*a[0]/2), c=rate(r+h*b[0]/2), d=rate(r+h*c[0]);
     const dr = h*(a[0]+2*b[0]+2*c[0]+d[0])/6;
     const fraction = Math.min(1, (r-FALL_END_RADIUS)/Math.max(-dr,1e-15));
     r += dr*fraction;
     angle += h*(a[1]+2*b[1]+2*c[1]+d[1])/6*fraction;
     properTime += h*fraction;
+    remaining -= h;
+    if (r <= FALL_END_RADIUS*(1+1e-12)) r=FALL_END_RADIUS;
   }
   return {radius: Math.max(FALL_END_RADIUS,r), angle, properTime};
 }
@@ -92,10 +104,10 @@ export function integratePastRay(position, localDirection, precision = .035, obs
   let maxEnergyError = 0;
   for (let step = 0; step < 1600; step++) {
     const r = norm(x);
-    if (ray.energy <= 0 || r < .18) return { escaped: false, maxEnergyError, ...ray };
+    if (ray.energy <= 0 || r < .005) return { escaped: false, maxEnergyError, ...ray };
     if (r<1 && dot(x,v)<0) return {escaped:false,maxEnergyError,...ray};
     if (r > 80) return { escaped: true, direction: v.map(c => c / norm(v)), maxEnergyError, ...ray };
-    const h = Math.min(1.5, Math.max(.002, precision * r / Math.max(norm(v), .15)));
+    const h = Math.min(1.5, Math.max(1e-8, precision * r / Math.max(norm(v), .15)));
     const a=acceleration(x);
     const v2=v.map((c,i)=>c+a[i]*h/2),a2=acceleration(x.map((c,i)=>c+v[i]*h/2));
     const v3=v.map((c,i)=>c+a2[i]*h/2),a3=acceleration(x.map((c,i)=>c+v2[i]*h/2));

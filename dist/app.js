@@ -1,6 +1,6 @@
 import { vertex, scene, composite } from './shaders.js';
 import { CAMERA_RADIUS, TABLE_WIDTH, TABLE_HEIGHT } from './geodesics.js';
-import { orbitalBasis, fallingBasis, wrapDegrees, flightFrame, createFlightTrajectory, sampleFlight } from './freefall.js';
+import { orbitalBasis, fallingBasis, wrapDegrees, flightFrame, createFlightTrajectory, sampleFlight, flightSignal } from './freefall.js';
 
 const $ = selector => document.querySelector(selector);
 const canvas = $('#universe');
@@ -108,6 +108,7 @@ function render() {
   gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, target);
   uniform(compositeProgram, 'image', 'uniform1i', 0); uniform(compositeProgram, 'resolution', 'uniform2f', displayWidth, displayHeight);
   uniform(compositeProgram, 'exposure', 'uniform1f', state.exposure);
+  uniform(compositeProgram, 'signalStrength', 'uniform1f', state.falling ? flightSignal(state.radius) : 1);
   uniform(compositeProgram, 'bloom', 'uniform1f', state.mode === 'cinematic' ? presets[state.quality].glow : .12);
   gl.drawArrays(gl.TRIANGLES, 0, 3);
 }
@@ -136,7 +137,7 @@ function animate(now) {
     updateFallStatus(); dirty = true;
   }
   if (state.orbit && !state.paused) { state.azimuth += dt * .025; dirty = true; }
-  if (state.paused && !dirty) { $('#fps').textContent = state.completed ? 'Journey complete · look around' : 'Paused · resting GPU'; return; }
+  if (state.paused && !dirty) { $('#fps').textContent = state.completed ? 'Journey complete · signal lost' : 'Paused · resting GPU'; return; }
   collectGpuTimes();
   if (timerExtension && pendingQueries.length < 4 && frames % 20 === 0) {
     activeQuery = gl.createQuery(); gl.beginQuery(timerExtension.TIME_ELAPSED_EXT, activeQuery);
@@ -169,6 +170,10 @@ function sync() {
   $('#pause').innerHTML = state.completed ? '✓ <span>Complete</span>' : state.paused ? '▷ <span>Resume</span>' : 'Ⅱ <span>Pause</span>';
   $('#pause').disabled = state.completed;
   $('#pause').setAttribute('aria-label', state.completed ? 'Journey complete' : state.paused ? 'Resume animation' : 'Pause animation');
+  if (state.paused) $('#fps').textContent = state.completed ? 'Journey complete · signal lost' : 'Paused · resting GPU';
+  else if (/^(Journey complete|Paused)/.test($('#fps').textContent)) {
+    $('#fps').textContent = 'Measuring performance'; sampleStart = performance.now(); frames = 0;
+  }
   $('#look-back').setAttribute('aria-pressed', Math.cos(state.fallYaw) < 0 ? 'true' : 'false');
   $('#look-back').textContent = Math.cos(state.fallYaw) < 0 ? '↶ Look forward' : '↶ Look back';
   $('#projection').textContent = state.panorama ? '360° all sky · switch to perspective' : 'Perspective · switch to 360° all sky';
@@ -177,7 +182,7 @@ function sync() {
   $('#inclination').disabled = state.falling; $('#orbit').disabled = state.falling;
   $('#labels').disabled = state.falling;
   $('#fall-options').hidden = !state.falling; $('#fall-status').hidden = !state.falling; $('#plunge').hidden = state.falling;
-  $('#fall-hint').textContent = state.falling ? 'Drag to look around · scrub to revisit any moment' : 'NASA-inspired spiral flight · nearly two loops';
+  $('#fall-hint').textContent = state.completed ? 'Signal lost · scrub to replay or return to orbit' : state.falling ? 'Drag to look around · scrub to revisit any moment' : 'NASA-inspired spiral flight · nearly two loops';
   $('#adaptive').textContent = state.falling ? '30 FPS TARGET' : 'ADAPTIVE';
   $('#quality option[value="balanced"]').textContent = state.falling ? 'Balanced · plunge detail' : 'Balanced · 60 fps target';
   $('#quality option[value="high"]').textContent = state.falling ? 'High · plunge detail' : 'High · more detail';
@@ -203,10 +208,10 @@ function updateFallStatus() {
   const point=project({radius:state.radius,angle:state.flightAngle});
   $('#track-camera').setAttribute('cx',point[0]); $('#track-camera').setAttribute('cy',point[1]);
   $('#track-horizon').setAttribute('r',scale); $('#track-photon').setAttribute('r',1.5*scale);
-  const stage = state.completed ? 'INSIDE THE HORIZON' : state.radius <= 1 ? 'HORIZON CROSSED' : state.radius <= 1.5 ? 'APPROACHING THE HORIZON' : state.radius <= 3 ? 'LOOPING INSIDE THE DISK' : 'APPROACHING THE BLACK HOLE';
+  const stage = state.completed ? 'SIGNAL LOST · JOURNEY COMPLETE' : state.radius <= .12 ? 'CAMERA SIGNAL FADING' : state.radius <= .4 ? 'APPROACHING THE CENTER' : state.radius <= 1 ? 'HORIZON CROSSED' : state.radius <= 1.5 ? 'APPROACHING THE HORIZON' : state.radius <= 3 ? 'LOOPING INSIDE THE DISK' : 'APPROACHING THE BLACK HOLE';
   if (lastFallStage !== stage) {
     lastFallStage = stage; $('#fall-stage').textContent = stage;
-    $('#fall-message').textContent = state.completed ? 'Paused at 0.82 rₛ. Incoming light still arrives. Scrub to replay; the singularity is not modeled.' : state.radius <= 1 ? 'Incoming light can still reach you. Outgoing signals cannot escape.' : state.radius <= 1.5 ? 'The horizon is at 1 rₛ. Motion changes the apparent direction and brightness of light.' : state.radius <= 3 ? 'Nearly two loops inside the disk’s inner edge, then the final plunge.' : 'A curved free-fall path. Drag to look around; Space pauses.';
+    $('#fall-message').textContent = state.completed ? 'The journey ends in darkness as the simulated camera loses its signal near the center. Scrub to replay or return to orbit.' : state.radius <= .12 ? 'The camera signal fades to black for the end of the journey. This final fade is cinematic.' : state.radius <= .4 ? 'Continuing deep inside the horizon toward the central singularity. The final descent is slowed for viewing.' : state.radius <= 1 ? 'Incoming light can still reach you. Outgoing signals cannot escape. The descent continues.' : state.radius <= 1.5 ? 'The horizon is at 1 rₛ. Motion changes the apparent direction and brightness of light.' : state.radius <= 3 ? 'Nearly two loops inside the disk’s inner edge, then the final plunge.' : 'A curved free-fall path. Drag to look around; Space pauses.';
   }
 }
 function startFall() {
