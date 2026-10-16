@@ -1,6 +1,12 @@
 # TON 618 Observatory
 
+[Open the live observatory](https://v44m4n.github.io/ton618-observatory/)
+
 A local, dependency-free WebGL2 visualization. Double-click **Start.command** on this Mac, or run `npm start` with Node.js 20+ and open http://127.0.0.1:6180. Keep the serving terminal open. Opening `dist/index.html` directly does not work because the light-path worker requires HTTP.
+
+## GitHub Pages
+
+The GitHub Actions workflow in `.github/workflows/pages.yml` tests the physics and publishes the contents of `dist/` to GitHub Pages on every push to `main`. In the repository's Settings → Pages, the publishing source is **GitHub Actions**. The visualization runs entirely in the browser; the local Node server is not needed for the hosted version. The workflow can also be run manually from the Actions tab.
 
 ## Explore
 
