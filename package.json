@@ -1,0 +1,1 @@
+{"name":"ton618-observatory","version":"1.0.0","private":true,"type":"module","description":"Scientifically informed WebGL2 black-hole observatory","scripts":{"start":"node serve.mjs","test":"node --test test/physics.test.mjs"}}
