@@ -6,7 +6,7 @@ A local, dependency-free WebGL2 visualization. Double-click **Start.command** on
 
 ## GitHub Pages
 
-The GitHub Actions workflow in `.github/workflows/pages.yml` tests the physics and publishes the contents of `dist/` to GitHub Pages on every push to `main`. In the repository's Settings → Pages, the publishing source is **GitHub Actions**. The visualization runs entirely in the browser; the local Node server is not needed for the hosted version. The workflow can also be run manually from the Actions tab.
+The GitHub Actions workflow in `.github/workflows/pages.yml` tests the physics and publishes the contents of `dist/` to GitHub Pages on every push to `main`. Deployment adds a release identifier to scripts, styles, imported modules and worker URLs so returning visitors load a consistent new version after refreshing. This only changes the uploaded artifact; local source files keep their original paths. In the repository's Settings → Pages, the publishing source is **GitHub Actions**. The visualization runs entirely in the browser; the local Node server is not needed for the hosted version. The workflow can also be run manually from the Actions tab.
 
 ## Explore
 

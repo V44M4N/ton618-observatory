@@ -31,6 +31,20 @@ jobs:
         run: npm test
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
+      - name: Version browser assets for this release
+        run: |
+          node --input-type=module <<'JS'
+          import { readdir, readFile, writeFile } from 'node:fs/promises';
+          for (const name of await readdir('dist')) {
+            if (!/\.(html|js)$/.test(name)) continue;
+            const path = 'dist/' + name;
+            const source = await readFile(path, 'utf8');
+            // Include imported modules and worker URLs, not just the entry script.
+            const versioned = source.replace(/(["'])((?:\.\/)?[\w-]+\.(?:js|css))\1/g,
+              (_, quote, asset) => quote + asset + '?v=' + process.env.GITHUB_SHA + quote);
+            await writeFile(path, versioned);
+          }
+          JS
       - name: Upload visualization
         uses: actions/upload-pages-artifact@v3
         with:
